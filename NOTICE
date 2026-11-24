@@ -1,0 +1,9 @@
+@devstreamby/document-preview
+Copyright (c) DEVSTREAM / BuildingBlocks contributors
+
+This package incorporates @vivliostyle/core (AGPL-3.0).
+Vivliostyle is Copyright (c) Vivliostyle Foundation and contributors.
+See https://github.com/vivliostyle/vivliostyle.js and the AGPL-3.0 license text.
+
+When you convey this package (or a modified version), you must comply with AGPL-3.0,
+including providing Corresponding Source for the AGPL-covered work.

@@ -1,0 +1,5 @@
+# Consumer app `.npmrc` for GitHub Packages (org: devstreamby).
+# TOKEN: classic PAT with read:packages (or fine-grained: read packages).
+
+@devstreamby:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
