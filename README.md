@@ -201,7 +201,7 @@ Wire `@page` margin boxes / `element(...)` names to your own `position: running(
 
 ## Develop / publish
 
-Public GitHub repository (AGPL-3.0). CI: GitHub Actions. Registry: GitHub Packages. See [docs/SETUP.md](docs/SETUP.md).
+GitHub repository (AGPL-3.0). CI: GitHub Actions. Registry: GitHub Packages (**private** package — auth required). See [docs/SETUP.md](docs/SETUP.md).
 
 ```bash
 npm install
