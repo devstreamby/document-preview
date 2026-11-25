@@ -1,6 +1,5 @@
 import {
     getPageContainers,
-    MARGIN_BOX_BOTTOM_RIGHT_SELECTOR,
     PAGE_AREA_CONTAINER_SELECTOR,
     PAGE_AREA_SELECTOR,
     PAGE_COLUMN_SELECTOR,
@@ -59,92 +58,36 @@ const INJECTED_SIGNATURE_VIEW_CSS = `
   pointer-events: none;
 }
 .injected-signature-host .injected-signature,
-.injected-signature-host .signature-footer {
-  position: static !important;
-  margin-top: 0;
-  font-size: 10pt;
+.injected-signature-host .page-signature {
+  position: static;
   width: 100%;
   box-sizing: border-box;
-}
-.injected-signature-host .weighing-protocol-footer {
-  display: flex !important;
-  flex-direction: row !important;
-  justify-content: space-between !important;
-  align-items: flex-start !important;
-  margin-top: 24px;
-  font-size: 10pt;
-}
-.injected-signature-host .signatures-container {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-.injected-signature-host .left-signatures {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.injected-signature-host .signature-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 32px;
-}
-.injected-signature-host .signature-label {
-  display: inline-block;
-  flex-shrink: 0;
-  flex-basis: 140px;
-  width: 140px;
-  white-space: nowrap;
-  font-size: 12pt;
-}
-.injected-signature-host .signature-name {
-  display: inline-block;
-  flex-shrink: 0;
-  flex-basis: 120px;
-}
-.injected-signature-host .signature-spacer {
-  flex: 0 0 80%;
-  box-sizing: border-box;
-}
-.injected-signature-host .signature-line-group {
-  display: flex;
-  align-items: flex-end;
-  gap: 24px;
-  flex-shrink: 0;
-}
-.injected-signature-host .signature-line {
-  width: 100px;
-  min-height: 1em;
-  border-bottom: 1px solid #000;
-  display: inline-block;
-}
-.injected-signature-host .judges-section {
-  display: flex;
-  align-items: flex-start;
-  gap: 40px;
-  justify-content: space-between;
-}
-.injected-signature-host .judges-label {
-  white-space: nowrap;
-}
-.injected-signature-host .judges-signatures {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.injected-signature-host .judge-signature-line {
-  width: 150px;
-  border-bottom: 1px solid #000;
-  display: inline-block;
-}
-.pagination-slot,
-${MARGIN_BOX_BOTTOM_RIGHT_SELECTOR} {
-  font-size: 10pt;
-  text-align: center;
 }
 `.trim();
 
 const INJECTED_SIGNATURE_STYLE_ID = "vivliostyle-injected-signature-styles";
+const SOURCE_DOCUMENT_STYLE_ID = "vivliostyle-source-document-styles";
+
+/** Re-publish source style tags into the preview document for post-layout signature hosts. */
+export const ensureSourceDocumentStyles = (previewDocument: Document, sourceHtml: string): void => {
+    if (previewDocument.getElementById(SOURCE_DOCUMENT_STYLE_ID)) {
+        return;
+    }
+
+    const doc = parseHtmlDocument(sourceHtml);
+    const chunks = Array.from(doc.querySelectorAll("style"))
+        .map((style) => style.textContent?.trim() || "")
+        .filter(Boolean);
+
+    if (chunks.length === 0) {
+        return;
+    }
+
+    const styleEl = previewDocument.createElement("style");
+    styleEl.id = SOURCE_DOCUMENT_STYLE_ID;
+    styleEl.textContent = chunks.join("\n");
+    (previewDocument.head || previewDocument.documentElement).appendChild(styleEl);
+};
 
 export const extractSignatureSources = (sourceHtml: string): VivliostyleSignatureSource[] => {
     const doc = parseHtmlDocument(sourceHtml);
@@ -271,7 +214,6 @@ const buildSignatureHost = (previewDocument: Document, source: VivliostyleSignat
     signature.classList.add(INJECTED_SIGNATURE_CLASS);
     signature.style.position = "static";
     signature.style.removeProperty("display");
-    signature.style.marginTop = "0";
 
     const host = previewDocument.createElement("div");
     host.className = `document_${source.documentId} ${INJECTED_SIGNATURE_CLASS}-host`;
@@ -325,7 +267,7 @@ const placeHostBelowPageContent = (mountParent: HTMLElement, host: HTMLElement):
     }
 
     const hostTop = host.getBoundingClientRect().top;
-    const gapPx = Math.max(0, contentBottom - hostTop + 8);
+    const gapPx = Math.max(0, contentBottom - hostTop);
     host.style.marginTop = `${gapPx}px`;
 };
 

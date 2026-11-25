@@ -8,6 +8,7 @@ import {
 import {
     clearInjectedSignatures,
     ensureInjectedSignatureViewStyles,
+    ensureSourceDocumentStyles,
     extractSignatureSources,
     injectSignatures,
     type VivliostyleSignatureSource,
@@ -27,11 +28,13 @@ const INJECTED_SIGNATURE_HOST_SELECTOR = ".injected-signature-host";
 
 const applyUxPasses = (
     previewDocument: Document,
+    sourceHtml: string,
     signatureSources: VivliostyleSignatureSource[],
     groupRunningSources: VivliostyleGroupRunningSource[],
     paginationTemplate: string | null,
     force: boolean,
 ): void => {
+    ensureSourceDocumentStyles(previewDocument, sourceHtml);
     ensureInjectedSignatureViewStyles(previewDocument);
 
     const hasInjectedSignatures = Boolean(previewDocument.querySelector(INJECTED_SIGNATURE_HOST_SELECTOR));
@@ -68,7 +71,14 @@ export const mountVivliostyleUxAdapters = (input: VivliostyleUxAdapterInput): Vi
         }
         applying = true;
         try {
-            applyUxPasses(previewDocument, signatureSources, groupRunningSources, paginationTemplate, force);
+            applyUxPasses(
+                previewDocument,
+                sourceHtml,
+                signatureSources,
+                groupRunningSources,
+                paginationTemplate,
+                force,
+            );
         } finally {
             applying = false;
         }
