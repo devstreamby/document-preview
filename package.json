@@ -1,6 +1,6 @@
 {
   "name": "@devstreamby/document-preview",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Opaque Vivliostyle CoreViewer document preview session (AGPL-3.0).",
   "license": "AGPL-3.0",
   "type": "module",
@@ -24,7 +24,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@vivliostyle/core": "2.46.0"
+    "@vivliostyle/core": "2.47.0"
   },
   "devDependencies": {
     "typescript": "^5.8.2"
