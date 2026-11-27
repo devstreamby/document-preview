@@ -98,6 +98,21 @@ const clearImportantBoxStyleForPrint = (element: HTMLElement): void => {
     element.style.removeProperty("max-height");
 };
 
+
+/** Apple WebKit print engine (Safari desktop + all iOS browsers). Blink/Chrome stays locked. */
+const isWebKitPrintEngine = (frameWindow: Window): boolean => {
+    const { userAgent, maxTouchPoints } = frameWindow.navigator;
+    // iPadOS 13+ may report Macintosh in UA; all iOS browsers print through WebKit.
+    const isIOS =
+        /iPad|iPhone|iPod/i.test(userAgent) ||
+        (/\bMacintosh\b/i.test(userAgent) && maxTouchPoints > 1);
+    if (isIOS) {
+        return true;
+    }
+    // Desktop Safari only — Chromium UAs also contain "Safari".
+    return /Safari/i.test(userAgent) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/i.test(userAgent);
+};
+
 const restoreImportantBoxStyle = (snapshot: PreviousImportantBoxStyle): void => {
     const { element } = snapshot;
     if (snapshot.width) {
@@ -163,7 +178,8 @@ const prepareIframePrintSurface = (frameWindow: Window, frameDocument: Document)
         if (!element.style.height && element.offsetHeight > 0) {
             element.style.height = `${element.offsetHeight}px`;
         }
-        element.style.overflow = "hidden";
+        // Chrome: overflow hidden = one sheet per page. WebKit: same box, visible to avoid mid-row clip.
+        element.style.overflow = isWebKitPrintEngine(frameWindow) ? "visible" : "hidden";
 
         if (frameWindow.getComputedStyle(element).display === "none") {
             element.style.display = "block";
