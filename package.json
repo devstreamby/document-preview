@@ -1,6 +1,6 @@
 {
   "name": "@devstreamby/document-preview",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Opaque Vivliostyle CoreViewer document preview session (AGPL-3.0).",
   "license": "AGPL-3.0",
   "type": "module",

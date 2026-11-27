@@ -24,23 +24,35 @@ ${VIEWER_VIEWPORT_SELECTOR} {
 }
 `.trim();
 
+const buildIosPrintHtml = (frameDocument: Document): string =>
+    `<!DOCTYPE html>${frameDocument.documentElement.outerHTML}`.replace(
+        /<\/head>/i,
+        `<style data-vivliostyle-ios-viewport-unlock="true">${IOS_VIEWPORT_UNLOCK_CSS}</style></head>`,
+    );
+
 /**
  * iOS cannot print the Vivliostyle iframe (prints parent Admin UI).
- * Open a blob snapshot in a new tab and print that document.
+ *
+ * Do not use `blob:` — under deployed SecurityHeaders the opener CSP (style nonce,
+ * no unsafe-inline) and COOP make blob tabs unusable for print. Open the same-origin
+ * preview host (style-nonce excluded) and replace it with the prepared snapshot.
  */
 export const printIosPreparedDocument = (
     frameDocument: Document,
     openerWindow: Window,
     pageCount: number,
+    previewHostUrl: string,
 ): PreviewPrintResult => {
-    const html = `<!DOCTYPE html>${frameDocument.documentElement.outerHTML}`.replace(
-        /<\/head>/i,
-        `<style data-vivliostyle-ios-viewport-unlock="true">${IOS_VIEWPORT_UNLOCK_CSS}</style></head>`,
-    );
-    const objectUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
-    const printWindow = openerWindow.open(objectUrl, "_blank");
+    if (!previewHostUrl) {
+        return {
+            ok: false,
+            reason: "iOS print needs the same-origin document-preview host URL",
+        };
+    }
+
+    const html = buildIosPrintHtml(frameDocument);
+    const printWindow = openerWindow.open(previewHostUrl, "_blank");
     if (!printWindow) {
-        URL.revokeObjectURL(objectUrl);
         return {
             ok: false,
             reason: "Popup blocked — allow popups to print this document on iOS",
@@ -64,7 +76,6 @@ export const printIosPreparedDocument = (
         } catch {
             // ignore
         }
-        URL.revokeObjectURL(objectUrl);
         try {
             openerWindow.focus();
         } catch {
@@ -73,38 +84,43 @@ export const printIosPreparedDocument = (
     };
 
     const requestPrint = (): void => {
-        if (printed || finished || !printWindow.document.body?.childElementCount) {
+        if (printed || finished) {
             return;
         }
-        printed = true;
         try {
-            printWindow.print();
+            printWindow.document.open();
+            printWindow.document.write(html);
+            printWindow.document.close();
         } catch {
-            // User can still print manually from the opened tab.
+            finish();
+            return;
         }
-        // iOS often skips afterprint; close() is ignored while the sheet is open.
-        closePoll = printWindow.setInterval(() => {
-            if (printWindow.closed) {
-                finish();
-                return;
-            }
+
+        printed = true;
+        printWindow.setTimeout(() => {
             try {
-                printWindow.close();
+                printWindow.print();
             } catch {
-                // ignore
+                // User can still print manually from the opened tab.
             }
-        }, 500);
-        printWindow.setTimeout(finish, 120_000);
+            // iOS often skips afterprint; close() is ignored while the sheet is open.
+            closePoll = printWindow.setInterval(() => {
+                if (printWindow.closed) {
+                    finish();
+                    return;
+                }
+                try {
+                    printWindow.close();
+                } catch {
+                    // ignore
+                }
+            }, 500);
+            printWindow.setTimeout(finish, 120_000);
+        }, 200);
     };
 
-    printWindow.addEventListener(
-        "load",
-        () => {
-            printWindow.setTimeout(requestPrint, 200);
-        },
-        { once: true },
-    );
-    printWindow.setTimeout(requestPrint, 1_200);
+    printWindow.addEventListener("load", requestPrint, { once: true });
+    printWindow.setTimeout(requestPrint, 1_500);
     printWindow.addEventListener("afterprint", finish, { once: true });
 
     return { ok: true, pageCount };

@@ -270,7 +270,7 @@ export const printVivliostyleIframe = (iframe: HTMLIFrameElement): VivliostylePr
         }
 
         if (isIOSClient(openerWindow) || isIOSClient(frameWindow)) {
-            const result = printIosPreparedDocument(frameDocument, openerWindow, pageCount);
+            const result = printIosPreparedDocument(frameDocument, openerWindow, pageCount, iframe.src);
             restorePrintSurface();
             return result;
         }
