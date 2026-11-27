@@ -11,6 +11,7 @@ import {
     UNPAIRED_PAGE_ATTR,
 } from "./vivliostyleDom";
 import { VIVLIOSTYLE_HOST_PRINT_CSS } from "./vivliostyleHostCss";
+import { isIOSClient, printIosPreparedDocument } from "./vivliostylePrintIos";
 
 export type VivliostylePrintResult = { ok: true; pageCount: number } | { ok: false; reason: string };
 
@@ -99,17 +100,12 @@ const clearImportantBoxStyleForPrint = (element: HTMLElement): void => {
 };
 
 
-/** Apple WebKit print engine (Safari desktop + all iOS browsers). Blink/Chrome stays locked. */
+/** Apple WebKit print engine (Safari desktop + all iOS browsers). Blink stays locked. */
 const isWebKitPrintEngine = (frameWindow: Window): boolean => {
-    const { userAgent, maxTouchPoints } = frameWindow.navigator;
-    // iPadOS 13+ may report Macintosh in UA; all iOS browsers print through WebKit.
-    const isIOS =
-        /iPad|iPhone|iPod/i.test(userAgent) ||
-        (/\bMacintosh\b/i.test(userAgent) && maxTouchPoints > 1);
-    if (isIOS) {
+    if (isIOSClient(frameWindow)) {
         return true;
     }
-    // Desktop Safari only — Chromium UAs also contain "Safari".
+    const { userAgent } = frameWindow.navigator;
     return /Safari/i.test(userAgent) && !/Chrome|Chromium|CriOS|Edg|OPR|Firefox|FxiOS/i.test(userAgent);
 };
 
@@ -263,6 +259,7 @@ export const printVivliostyleIframe = (iframe: HTMLIFrameElement): VivliostylePr
         return { ok: false, reason: "Vivliostyle preview iframe has no contentWindow/contentDocument" };
     }
 
+    const openerWindow = iframe.ownerDocument.defaultView ?? frameWindow;
     let restorePrintSurface: (() => void) | null = null;
     try {
         restorePrintSurface = prepareIframePrintSurface(frameWindow, frameDocument);
@@ -271,6 +268,13 @@ export const printVivliostyleIframe = (iframe: HTMLIFrameElement): VivliostylePr
             restorePrintSurface();
             return { ok: false, reason: "No Vivliostyle page containers ready for print" };
         }
+
+        if (isIOSClient(openerWindow) || isIOSClient(frameWindow)) {
+            const result = printIosPreparedDocument(frameDocument, openerWindow, pageCount);
+            restorePrintSurface();
+            return result;
+        }
+
         frameWindow.print();
         return { ok: true, pageCount };
     } catch (error) {
