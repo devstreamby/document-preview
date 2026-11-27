@@ -1,4 +1,5 @@
 import type { PreviewPrintResult } from "../types";
+import { VIEWER_VIEWPORT_ID, VIEWER_VIEWPORT_SELECTOR } from "./vivliostyleDom";
 
 /** True on iPhone / iPad / iPod (incl. iPadOS desktop-UA mode). */
 export const isIOSClient = (clientWindow: Window): boolean => {
@@ -9,147 +10,33 @@ export const isIOSClient = (clientWindow: Window): boolean => {
     );
 };
 
-const CONTENT_READY_DELAY_MS = 100;
-const CONTENT_READY_FALLBACK_MS = 600;
-const CLOSE_POLL_MS = 400;
-const SESSION_TTL_MS = 120_000;
-
-type IosPrintSession = {
-    dispose: () => void;
-    start: () => void;
-};
+/**
+ * Only unlocks the screen-stack viewport lock. Sheet / page-break rules stay in the
+ * host print CSS already injected by prepareIframePrintSurface.
+ */
+const IOS_VIEWPORT_UNLOCK_CSS = `
+html, body,
+#${VIEWER_VIEWPORT_ID},
+${VIEWER_VIEWPORT_SELECTOR} {
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+`.trim();
 
 /**
- * Platform adapter for iOS print.
- *
- * Constraint: `iframe.contentWindow.print()` prints the parent Admin UI, not the preview.
- * Strategy: open a same-gesture blob tab with the prepared document, print there, then
- * dismiss the tab when the system print sheet ends (afterprint is unreliable on iOS).
+ * iOS cannot print the Vivliostyle iframe (prints parent Admin UI).
+ * Open a blob snapshot in a new tab and print that document.
  */
-const createIosPrintSession = (
-    printWindow: Window,
-    openerWindow: Window,
-    objectUrl: string,
-): IosPrintSession => {
-    const disposers: Array<() => void> = [];
-    let disposed = false;
-    let printRequested = false;
-
-    const dispose = (): void => {
-        if (disposed) {
-            return;
-        }
-        disposed = true;
-        while (disposers.length > 0) {
-            disposers.pop()?.();
-        }
-        try {
-            printWindow.close();
-        } catch {
-            // Window may already be closed by the browser.
-        }
-        URL.revokeObjectURL(objectUrl);
-        try {
-            openerWindow.focus();
-        } catch {
-            // Focus return is best-effort on iOS.
-        }
-    };
-
-    const trackTimeout = (handle: number): void => {
-        disposers.push(() => printWindow.clearTimeout(handle));
-    };
-
-    const trackInterval = (handle: number): void => {
-        disposers.push(() => printWindow.clearInterval(handle));
-    };
-
-    const trackListener = (
-        target: Window | MediaQueryList,
-        type: string,
-        listener: EventListenerOrEventListenerObject,
-        options?: AddEventListenerOptions,
-    ): void => {
-        target.addEventListener(type, listener, options);
-        disposers.push(() => target.removeEventListener(type, listener, options));
-    };
-
-    const documentHasContent = (): boolean =>
-        Boolean(printWindow.document.body && printWindow.document.body.childElementCount > 0);
-
-    const watchForPrintSheetDismissal = (): void => {
-        // iOS ignores close() while the print sheet is open; polling succeeds after dismiss.
-        trackInterval(
-            printWindow.setInterval(() => {
-                if (printWindow.closed) {
-                    dispose();
-                    return;
-                }
-                try {
-                    printWindow.close();
-                } catch {
-                    // ignore
-                }
-            }, CLOSE_POLL_MS),
-        );
-    };
-
-    const requestPrint = (): void => {
-        if (disposed || printRequested || !documentHasContent()) {
-            return;
-        }
-        printRequested = true;
-        try {
-            printWindow.focus();
-            printWindow.print();
-        } catch {
-            // User can still use the system share/print UI on the opened tab.
-        }
-        watchForPrintSheetDismissal();
-    };
-
-    const start = (): void => {
-        trackListener(printWindow, "afterprint", () => dispose());
-        trackListener(openerWindow, "focus", () => dispose());
-
-        const printMedia = printWindow.matchMedia?.("print");
-        if (printMedia && "addEventListener" in printMedia) {
-            trackListener(printMedia, "change", ((event: MediaQueryListEvent) => {
-                if (!event.matches) {
-                    dispose();
-                }
-            }) as EventListener);
-        }
-
-        // Blob navigation starts as about:blank; wait for the real document load.
-        trackListener(
-            printWindow,
-            "load",
-            () => {
-                trackTimeout(printWindow.setTimeout(requestPrint, CONTENT_READY_DELAY_MS));
-            },
-            { once: true },
-        );
-        trackTimeout(
-            printWindow.setTimeout(() => {
-                if (!printRequested) {
-                    requestPrint();
-                }
-            }, CONTENT_READY_FALLBACK_MS),
-        );
-        trackTimeout(printWindow.setTimeout(dispose, SESSION_TTL_MS));
-    };
-
-    return { start, dispose };
-};
-
-/** Print a prepared Vivliostyle preview document on iOS via a blob tab. */
 export const printIosPreparedDocument = (
     frameDocument: Document,
     openerWindow: Window,
     pageCount: number,
 ): PreviewPrintResult => {
-    const html = `<!DOCTYPE html>${frameDocument.documentElement.outerHTML}`;
+    const html = `<!DOCTYPE html>${frameDocument.documentElement.outerHTML}`.replace(
+        /<\/head>/i,
+        `<style data-vivliostyle-ios-viewport-unlock="true">${IOS_VIEWPORT_UNLOCK_CSS}</style></head>`,
+    );
     const objectUrl = URL.createObjectURL(new Blob([html], { type: "text/html" }));
     const printWindow = openerWindow.open(objectUrl, "_blank");
     if (!printWindow) {
@@ -160,6 +47,65 @@ export const printIosPreparedDocument = (
         };
     }
 
-    createIosPrintSession(printWindow, openerWindow, objectUrl).start();
+    let printed = false;
+    let finished = false;
+    let closePoll = 0;
+
+    const finish = (): void => {
+        if (finished) {
+            return;
+        }
+        finished = true;
+        if (closePoll) {
+            printWindow.clearInterval(closePoll);
+        }
+        try {
+            printWindow.close();
+        } catch {
+            // ignore
+        }
+        URL.revokeObjectURL(objectUrl);
+        try {
+            openerWindow.focus();
+        } catch {
+            // ignore
+        }
+    };
+
+    const requestPrint = (): void => {
+        if (printed || finished || !printWindow.document.body?.childElementCount) {
+            return;
+        }
+        printed = true;
+        try {
+            printWindow.print();
+        } catch {
+            // User can still print manually from the opened tab.
+        }
+        // iOS often skips afterprint; close() is ignored while the sheet is open.
+        closePoll = printWindow.setInterval(() => {
+            if (printWindow.closed) {
+                finish();
+                return;
+            }
+            try {
+                printWindow.close();
+            } catch {
+                // ignore
+            }
+        }, 500);
+        printWindow.setTimeout(finish, 120_000);
+    };
+
+    printWindow.addEventListener(
+        "load",
+        () => {
+            printWindow.setTimeout(requestPrint, 200);
+        },
+        { once: true },
+    );
+    printWindow.setTimeout(requestPrint, 1_200);
+    printWindow.addEventListener("afterprint", finish, { once: true });
+
     return { ok: true, pageCount };
 };
